@@ -9,4 +9,6 @@ xmcota
 xmvsf
 mvsc
 msh - Character Select timer isn't frozen though
-Written in LUA using the Emulator FBNeo
+REVISION 1.1
+Per the request of Sir Ghostler, added support for MSHVSF
+Added the option to press O to decrement the current player
