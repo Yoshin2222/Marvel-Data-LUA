@@ -32,15 +32,16 @@ y = 10,
 }
 
 local games = {
---Name, Timer, charselct timer, P1 UID, P2 UID,Number of Players
+--Name, Timer, charselct timer, P1 UID, P2 UID,Number of Players, Match Active(UNUSED ATM)
 	["Invalid"] = {}, -- null case
 --	xmcota = {"xmcota",0x0FF4808,0x0FF480A,0xFF4000,0xFF4400,2},
 --	xmvsf  = {"xmvsf" ,0x0FF5008,0x0FF480A,0xFF4000,0xFF4400,4},
 --	mvsc   = {"mvsc"  ,0x0FF4008,0x0FF416E,0xFF3000,0xFF3400,4},
-	["xmcota"] = {"xmcota",0x0FF4808,0x0FF480A,0xFF4000,0xFF4400,2},
-    ["xmvsf"]  = {"xmvsf" ,0x0FF5008,0x0FF480A,0xFF4000,0xFF4400,2},
-    ["mvsc"]   = {"mvsc"  ,0x0FF4008,0x0FF416E,0xFF3000,0xFF3400,4},
-    ["msh"]    = {"msh"   ,0x0FF4808,0x0,0xFF4000,0xFF4400,2},	
+	["xmcota"]    = {"xmcota"	,0x0FF4808,0x0FF480A,0xFF4000,0xFF4400,2},
+    ["xmvsf"]     = {"xmvsf" 	,0x0FF5008,0x0FF480A,0xFF4000,0xFF4400,2},
+    ["mvsc"]  	  = {"mvsc"  	,0x0FF4008,0x0FF416E,0xFF3000,0xFF3400,4},
+    ["msh"]   	  = {"msh"      ,0x0FF4808,0x0FF491E,0xFF4000,0xFF4400,2,0xFF8FA2},
+    ["mshvsf"]    = {"mshvsf"   ,0x0FF4808,0x0FF495E,0xFF3800,0xFF3C00,4,0xFF8FA2},
 }
 
 local View_Mode = {
@@ -72,13 +73,16 @@ local UID_Data = {
 	accel_Y = 32,
 	Anim_Pointer = 52,
 	char_id = 80,
+	animelemtime = 63, --BYTE
 	Sprite_Header = 65,
+	P2_Ptr 		  = 140,
 }
 local Current_Player = 0 --0 = P1, 1= P2
 local infinite_time = 1
 local pressing_C = 0 -- Infinite time button
 local pressing_V = 0 -- Mode Toggle
-local pressing_P = 0 -- Toggle Players
+local pressing_P = 0 -- Toggle Players + 1
+local pressing_O = 0 -- Toggle Players - 1
 local Time_Frozen
 local PlayerZ = {}
 
@@ -112,14 +116,22 @@ local PlayerZ = {}
 --end
 local valid_player_no = 2
 
-current_game = ""
-current_game = games[rom]
-local timer_address = current_game[2]
-local charselect_timer_address = current_game[3]
-Player_UID.P1 = current_game[4]
-Player_UID.P2 = current_game[5]
-local Num_Players = current_game[6]
-local Space = Player_UID.P2 - Player_UID.P1
+	current_game = ""
+	current_game = games[rom]
+	local timer_address = current_game[2]
+	local charselect_timer_address = current_game[3]
+	Player_UID.P1 = current_game[4]
+	Player_UID.P2 = current_game[5]
+	local Num_Players = current_game[6]
+	local Space = Player_UID.P2 - Player_UID.P1
+	local match_state = current_game[7]
+
+
+	match_active = function()
+		return rd(current_game[7]) == Player_UID.P1
+	end
+
+match_active()
 	
 --Useful Maths functions for converting floating points
 	function Subpixel_Floatconvert(c,x)
@@ -186,11 +198,8 @@ local Space = Player_UID.P2 - Player_UID.P1
 	end
 	
 	function update_info()
-
+	match_active()
 	for i = 0,Num_Players-1,1 do
-	if current_game[1] == 0 then
-	return
-	else
 --		gui.clearuncommitted()
 	--DISPLAY MUGEN DAYA
 	PlayerZ[i] = { 
@@ -204,6 +213,7 @@ local Space = Player_UID.P2 - Player_UID.P1
 	Current_pos_X_subpixel 	  = rw(Player_UID.P1  + (Space * i) +  UID_Data.pos_X_subpixel),
 	Current_Y_Pos 		 	  = rws(Player_UID.P1  + (Space * i) +  UID_Data.pos_Y),
 	Current_pos_Y_subpixel 	  = rw(Player_UID.P1  + (Space * i) +  UID_Data.pos_Y_subpixel),
+	Current_Animelemtime 	  = rb(Player_UID.P1  + (Space * i) +  UID_Data.animelemtime),
 	Current_Anim_Ptr 		  = rd(Player_UID.P1  + (Space * i) +  UID_Data.Anim_Pointer),
 	
 --	Current_Animelem_Ptr 	  = rd(Player_UID.P1  + (Space * i) +  UID_Data.Animelem_Pointer),
@@ -224,13 +234,25 @@ local Space = Player_UID.P2 - Player_UID.P1
 	PlayerZ[i].Current_Sprite_Header_Ptr_offset   = define_file_offset(PlayerZ[i].Current_Sprite_Header_Ptr)	
 		end	
 	end
-end
 
-function render_text(update_info)
+function render_text1()
 		--` INFINITE TIME
 	gui.text(text.x+140,text.y*20, "C - Infinite Time = ".. infinite_time)
 	--` TOGGLE PLAYER
 	gui.text(text.x+140,text.y*21, "P - Toggle Current Player")	
+	end
+	
+function render_text2()
+	if match_active == false then
+		--` INFINITE TIME
+	gui.text(text.x+140,text.y*20, "C - Infinite Time = ".. infinite_time)
+	--` TOGGLE PLAYER
+	gui.text(text.x+140,text.y*21, "O/P - Toggle Current Player")	
+	else
+		--` INFINITE TIME
+	gui.text(text.x+140,text.y*20, "C - Infinite Time = ".. infinite_time)
+	--` TOGGLE PLAYER
+	gui.text(text.x+140,text.y*21, "O/P - Toggle Current Player")	
 	
 	--` Current Player
 	gui.text(0,0, "Player ".. Current_Player+1)	
@@ -303,10 +325,17 @@ function render_text(update_info)
 	end
 --OFFSET	
 	if PlayerZ[Current_Player].Current_Anim_Ptr_offset == 0 then
-	gui.text(text.x2+110,text.y*3,"0x000000")
+	gui.text(text.x2+90,text.y*3,"0x000000")
 	else
-	gui.text(text.x2+110,text.y*3, string.format("Offset = 0x%x", PlayerZ[Current_Player].Current_Anim_Ptr_offset))		
+	gui.text(text.x2+90,text.y*3, string.format("Offset = 0x%x", PlayerZ[Current_Player].Current_Anim_Ptr_offset))		
 	end
+--ANIMELEMTIME	
+	if PlayerZ[Current_Player].Current_Animelemtime == 0 then
+	gui.text(text.x2+160,text.y*3,"0x00")
+	else
+	gui.text(text.x2+160,text.y*3, string.format("Animelemtime = 0x%x", PlayerZ[Current_Player].Current_Animelemtime))		
+	end	
+	
 --	SPRITE HEADER POINTER
 	gui.text(text.x,text.y*4, "Sprite Header Ptr =")
 	if PlayerZ[Current_Player].Current_Sprite_Header_Ptr == 0 then
@@ -324,10 +353,11 @@ function render_text(update_info)
 	gui.text(text.x2+120,text.y*4,"0x00000000")
 	else
 	gui.text(text.x2+120,text.y*4, string.format("Offset = 0x%x", PlayerZ[Current_Player].Current_Sprite_Header_Ptr_offset))
-	end	
+		end	
+	end
 end
-	
-	function parse_input(valid_players)
+
+	function parse_input()
 	local keys = input.get()
 	
 			--Infinite Time Toggle
@@ -345,7 +375,7 @@ end
 			pressing_C = 0
 	end
 
-	--Toggle Data view
+	--Toggle Cuurent Player +1
 	if pressing_P == 0 and keys.P then
 		if Current_Player == Num_Players-1 then
 			Current_Player = 0
@@ -359,34 +389,49 @@ end
 	if pressing_P == 1 and not keys.P then
 			pressing_P = 0
 	end	
+
+	--Toggle Cuurent Player -1
+	if pressing_O == 0 and keys.O then
+		if Current_Player == 0 then
+			Current_Player = Num_Players - 1
+			pressing_O = 1
+		else
+			Current_Player = Current_Player - 1
+			pressing_O = 1
+		end
+	end
+	
+	if pressing_O == 1 and not keys.O then
+			pressing_O = 0
+	end	
 end
 --	emu.registerstart(function()
 --	update_info()
 --end)
 
 	emu.registerstart(function()
-	parse_input()
+		parse_input()
 	end)
 	
 	gui.register(function()
-	if current_game == Invalid then
-		return
-	else
 		parse_input()
 		Freeze_Timer()
 		update_info()
-	render_text()
-	end
-	end)
-
-emu.registerafter(function()
-	if current_game == Invalid then
-		return
-	else
-	update_info()
-	render_text()
+		if match_active == false then
+		render_text1()
+		else
+		render_text2()
 	end
 end)
+
+emu.registerafter(function()
+		update_info()
+		if match_active == false then
+		render_text1()
+		else
+		render_text2()
+	end
+	end)
 
 --	emu.frameadvance()
 --end
