@@ -10,5 +10,6 @@
 - mvsc
 - msh: Character Select timer isn't frozen though
 -     REVISION 1.1
+- Added display for FrameTime to make finding data in the ROM a bit easier
 - Per the request of Sir Ghostler, added support for MSHVSF
 - Added the option to press O to decrement the current player
