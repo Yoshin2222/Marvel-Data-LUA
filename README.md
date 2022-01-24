@@ -13,3 +13,9 @@
 - Added display for FrameTime to make finding data in the ROM a bit easier
 - Per the request of Sir Ghostler, added support for MSHVSF
 - Added the option to press O to decrement the current player
+-     REVISION 1.2
+- Can now use the script whenever ya like
+- Can target any player, any time
+- Added TileDef output
+- XCOTAs Character Select timer was wrong, now properly freezes
+- A port over from the Samsho script, can display Pos/Vel Data as either converted Floats for Mugen, or Hexadecimal like the Source game
