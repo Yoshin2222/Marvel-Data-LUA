@@ -7,6 +7,7 @@
 - xmvsf
 - mvsc
 - msh
+- mshvsf
 -     REVISION 1.1
 - Added display for FrameTime to make finding data in the ROM a bit easier
 - Per the request of Sir Ghostler, added support for MSHVSF
