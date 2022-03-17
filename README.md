@@ -22,5 +22,5 @@
 - XMCOTA Handles sprites slightly differently than the other VS Games, requiring 2 Pointers for the TileMap as opposed to 1. The script now accommodates that
 - Alongside that change, the script now properly updates depending on the current game, and it now shows which game is currently loaded for fun
 -     REVISION 1.4
--     Added a new mode, Address. This displays the raw Unit ID addresses for stuff like Velocity and Anim, hopefully streamlining the usage of Watchpoints and the like via MAME
--     The Lua now displays the AnimElem data in real-time. Can swap the Endian by pressing Z, by default it displays the data the game sees, whereas swapping the Endian views the raw data from the program data you would see in any given Hex Editor
+- Added a new mode, Address. This displays the raw Unit ID addresses for stuff like Velocity and Anim, hopefully streamlining the usage of Watchpoints and the like via MAME
+- The Lua now displays the AnimElem data in real-time. Can swap the Endian by pressing Z, by default it displays the data the game sees, whereas swapping the Endian views the raw data from the program data you would see in any given Hex Editor
