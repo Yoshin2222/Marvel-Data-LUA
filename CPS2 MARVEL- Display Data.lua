@@ -1,8 +1,5 @@
 --Initialise Variables/Addresses
 --Massive thanks to Jesuszilla for the tips/rewrite
-local int textx = 2
-local int textx2 = 290
-local int texty = 10
 local sw = emu.screenwidth()
 local sh = emu.screenheight()
 --Input Resolution of target system here
@@ -14,16 +11,16 @@ local sh = emu.screenheight()
 --NEOGEO
 
 local games = {
---Name, Timer, charselct timer, P1 UID, P2 UID,Number of Players, MaxTimer, Maxcharselect timer
+--Name, Timer, charselct timer, P1 UID, P2 UID,Number of Players, MaxTimer, Maxcharselect timer, Animelem Length
 	["Invalid"] = {}, -- null case
 --	xmcota = {"xmcota",0x0FF4808,0x0FF480A,0xFF4000,0xFF4400,2},
 --	xmvsf  = {"xmvsf" ,0x0FF5008,0x0FF480A,0xFF4000,0xFF4400,4},
 --	mvsc   = {"mvsc"  ,0x0FF4008,0x0FF416E,0xFF3000,0xFF3400,4},
-	["xmcota"]    = {"xmcota"	,0x0FF4808,0xFF4910,0xFF4000,0xFF4400,2,0x99,0x05},
-    ["xmvsf"]     = {"xmvsf" 	,0x0FF5008,0x0FF480A,0xFF4000,0xFF4400,2,0x99,0x20},
-    ["mvsc"]  	  = {"mvsc" 	,0x0FF4008,0x0FF416E,0xFF3000,0xFF3400,4,0x99,0x20},
-    ["msh"]   	  = {"msh"      ,0x0FF4808,0x0FF491E,0xFF4000,0xFF4400,2,0x99,0x20},
-    ["mshvsf"]    = {"mshvsf"   ,0x0FF4808,0x0FF495E,0xFF3800,0xFF3C00,4,0x99,0x20},
+	["xmcota"]    = {"xmcota"	,0x0FF4808,0x0FF4910,0xFF4000,0xFF4400,2,0x99,0x05,0x08},
+    ["xmvsf"]     = {"xmvsf" 	,0x0FF5008,0x0FF480A,0xFF4000,0xFF4400,2,0x99,0x20,0x10},
+    ["mvsc"]  	  = {"mvsc" 	,0x0FF4008,0x0FF416E,0xFF3000,0xFF3400,4,0x99,0x20,0x10},
+    ["msh"]   	  = {"msh"      ,0x0FF4808,0x0FF491E,0xFF4000,0xFF4400,2,0x99,0x20,0x20},
+    ["mshvsf"]    = {"mshvsf"   ,0x0FF4808,0x0FF495E,0xFF3800,0xFF3C00,4,0x99,0x20,0x10},
 }
 
 local res_offset = {
@@ -45,13 +42,25 @@ local res_offset = {
 	function OutputFloat(x,y,d)
 			return x + Subpixel_Floatconvert(d,y)--y
 	end
+	
+	function TimerFreezeValid()	
+	local timer_address = current_game[2]
+	local charselect_timer_address = current_game[3]
+		if timer_address == nil or timer_address == 0 then
+			return 0
+		end
+		if charselect_timer_address == nil or charselect_timer_address == 0 then
+				return 0
+		end
+		return 1
+	end
 
 	function Subpixel_Floatconvert(c,x)
 	local Output
 	if c == 0 and x == 0 then
 		return 0--x = x
 	else
-				Output = math.abs(x)/ c
+		Output = x / c
 		return Output + .0--absx + .0
 		end
 	end
@@ -122,14 +131,14 @@ wbs = memory.writebytesigned
 wws = memory.writewordsigned
 wds = memory.writedwordsigned
 
-local int text = {
+local text = {
 x = 2,
 x2 = 40,
-x3 = 290,
+x3 = 90,
 y = 10,
 }
 
-local Current_Mode = 2 --Default, 1= Source, 2 = Mugen
+local Current_Mode = 2 --Default, 1= Source, 2 = Mugen, 3 = Address
 
 local valid_player_no = 2
 
@@ -140,11 +149,12 @@ local pressing_C = 0 -- Infinite time button
 local pressing_V = 0 -- Mode Toggle
 local pressing_P = 0 -- Toggle Players + 1
 local pressing_O = 0 -- Toggle Players - 1
-
+local pressing_Z = 0 -- Toggle AnimElem Endian
 local PlayerZ = {}
-
+local endian = 1 --Used for Animelem data display
 
 while true do
+gui.clearuncommitted()
 --ADDRESSES (Moved down here to be persistently updated)
 local rom = emu.romname()
 	current_game = ""
@@ -181,9 +191,8 @@ local UID_Data = {
 	Vel_X 					= 20, --- 0x3E WORD
 	Vel_X_FloatingPoint 	= 22, --- 0x40 WORD
 	Accel_X					= 24, -- 0x80
-	Accel_Y					= 32, -- 0x94
-	Vel_Y 					= 28, --- 0x42 WORD
-	Vel_Y_FloatingPoint 	= 30, --- 0x44 WORD
+	Vel_Y 					= 28, --- 0x1C WORD
+	Vel_Y_FloatingPoint 	= 30, --- 0x1E WORD
 	Accel_Y					= 32, -- 0x94
 	Animelem_Pointer 		= 52, --- 0x4F 3Bytes, LOOK IN TO THIS!!! 
 	Animelemtime 			= 63, --BYTE
@@ -192,8 +201,8 @@ local UID_Data = {
 	Hitpause = 133, --Byte
 	Facing = 0xB4, --Byte, 1 = Right, 0 = Left
 --	Friction		  = 229, --LOOOK IN TO THIS!!!
-	Health = 625, --BYTE, P1 ADR = FF3271
-	Super_Gauge = 627, -- BYTE
+	Health = current_game[9],
+	Super_Gauge = current_game[10], -- BYTE
 	Super_Stock = 628 -- BYTE
 }
 
@@ -206,8 +215,45 @@ local UID_Data = {
 		end
 	end
 	
-
-gui.clearuncommitted()
+	function parseAnimElemdata(endian)
+	--Adjust text display location if game is XMCOTA
+		if rom	== "xmcota" then
+				yadjust = 1
+			else
+				yadjust = -1
+		end
+		local length = current_game[9]
+		local address = rd(UID.P1 + (Data_length.Players * Current_Player) + UID_Data.Animelem_Pointer) --+  UID_Data.Visible
+		for i = 0, length-1, 1 do
+	--Adjust text display location if Endian is swapped
+		if endian == 2 then
+			if (i % 2 == 0) then
+				xadjust = -1
+			else
+				xadjust = 1
+			end
+		else
+				xadjust = 1		
+		end
+--			yoffset = math.floor(i/0x20)
+--			xoffset = math.floor(0x20*8*yoffset)
+			data = rb(address + i+xadjust-1)
+			gui.text(text.x,text.y*(10+yadjust),"Animelemdata")
+			gui.text(text.x+60,text.y*(10+yadjust),"SwapEndian - Z")
+			--Display 00 if nil value since Lua tends to only draw one 0
+				if data == 0 then
+					gui.text(text.x+(8*i),text.y*(11+yadjust),"00")
+				else
+					gui.text(text.x+(8*i),text.y*(11+yadjust),string.format("%x",data))
+				end
+--				if data == 0 then
+--					gui.text(text.x+(8*i) - xoffset,text.y*(11+yoffset+yadjust),"00")
+--				else
+--					gui.text(text.x+(8*i) - xoffset,text.y*(11+yoffset+yadjust),string.format("%x",data))
+--				end
+			end
+		end
+		
 	local keys = input.get()
 	
 	for i = 0,Num_Players-1, 1 do
@@ -231,6 +277,7 @@ gui.clearuncommitted()
 				Current_Animelem_Ptr 	  	= rd(UID.P1 + (Data_length.Players * i) +  UID_Data.Animelem_Pointer),
 				Current_Animelemtime 	  	= rb(UID.P1 + (Data_length.Players * i) +  UID_Data.Animelemtime),
 				Current_Sprite_Pointer 		= rt(UID.P1 + (Data_length.Players * i) +  UID_Data.Sprite_Pointer),
+--				Current_Health				= rw(UID.P1 + (Data_length.Players * i) +  UID_Data.Health),
 			}
 
 			--DISPLAY ANIMELEM BYTES
@@ -263,8 +310,10 @@ gui.clearuncommitted()
 			gui.text(text.x2+142,text.y*2, string.format("YAccel = 0x%x", PlayerZ[Current_Player].Current_Accel_Y))
 		--	ANIMELEMTIME
 			gui.text(text.x+90,text.y*3, string.format("Animelemtime = 0x%x", PlayerZ[Current_Player].Current_Animelemtime))
+		--	Health
+--			gui.text(text.x,text.y*11, string.format("Health = 0x%x", PlayerZ[Current_Player].Current_Health))
 
-		else
+		elseif Current_Mode == 2 then
 		
 		--DISPLAY MUGEN DAYA
 		PlayerZ[i] = { 
@@ -285,6 +334,7 @@ gui.clearuncommitted()
 			Current_Animelem_Ptr 	  	= rd(UID.P1  + (Data_length.Players * i) +  UID_Data.Animelem_Pointer),
 			Current_Animelemtime 	  	= rb(UID.P1 + (Data_length.Players * i) +  UID_Data.Animelemtime),
 			Current_Sprite_Pointer 		= rt(UID.P1 + (Data_length.Players * i) +  UID_Data.Sprite_Pointer),
+--			Current_Health				= rw(UID.P1 + (Data_length.Players * i) +  UID_Data.Health),
 		}
 
 		--	POS X
@@ -309,6 +359,80 @@ gui.clearuncommitted()
 			gui.text(text.x2+142,text.y*2, string.format("YAccel = %f", PlayerZ[Current_Player].Current_Accel_Y))
 		--	ANIMELEMTIME
 			gui.text(text.x+90,text.y*3, string.format("Animelemtime = %d", PlayerZ[Current_Player].Current_Animelemtime))
+		--	Health
+--			gui.text(text.x,text.y*11, string.format("Health = 0x%d", PlayerZ[Current_Player].Current_Health))
+
+
+--ADDRESS MODE
+		else
+		
+		PlayerZ[i] = { 
+			visible						= UID.P1 + (Data_length.Players * i) +  UID_Data.Visible,
+			Current_X_Vel 			  	= UID.P1 + (Data_length.Players * i) +  UID_Data.Vel_X,
+			Current_X_Vel_FloatingPoint	= UID.P1  + (Data_length.Players * i) +  UID_Data.Vel_X_FloatingPoint,
+			Current_Y_Vel 			  	= UID.P1 + (Data_length.Players * i) +  UID_Data.Vel_Y,
+			Current_Y_Vel_FloatingPoint	= UID.P1  + (Data_length.Players * i) +  UID_Data.Vel_Y_FloatingPoint,
+		--	Current_Accel_X 		  	= UID.P1 + (Data_length.Players * i) +  UID_Data.Accel_X,
+			Current_Accel_X 		  	= UID.P1 + (Data_length.Players * i) +  UID_Data.Accel_X,
+			Current_Accel_Y 		  	= UID.P1 + (Data_length.Players * i) +  UID_Data.Accel_Y,
+		--	Current_Accel_Y 		  	= UID.P1 + (Data_length.Players * i) +  UID_Data.Accel_Y,
+			Current_X_Pos 			  	= UID.P1  + (Data_length.Players * i) +  UID_Data.Pos_X,
+			Current_Pos_X_FloatingPoint = UID.P1  + (Data_length.Players * i) +  UID_Data.Pos_X_FloatingPoint,
+			Current_Y_Pos 		 	  	= UID.P1  + (Data_length.Players * i) +  UID_Data.Pos_Y,
+			Current_Pos_Y_FloatingPoint = UID.P1  + (Data_length.Players * i) +  UID_Data.Pos_Y_FloatingPoint,
+		--	Current_Animelem_Ptr 	  	= UID.P1  + (Data_length.Players * i) +  UID_Data.Animelem_Pointer,
+			Current_Animelem_Ptr 	  	= UID.P1  + (Data_length.Players * i) +  UID_Data.Animelem_Pointer,
+			Current_Animelemtime 	  	= UID.P1  + (Data_length.Players * i) +  UID_Data.Animelemtime,
+			Current_Sprite_Pointer 		= UID.P1  + (Data_length.Players * i) +  UID_Data.Sprite_Pointer,
+--			Current_Health				= UID.P1  + (Data_length.Players * i) +  UID_Data.Health,
+		}
+
+		--	POS X
+			gui.text(text.x,text.y, string.format("Pos X = 0x%x", PlayerZ[Current_Player].Current_X_Pos))	
+		--	FloatingPointX
+--			gui.text(text.x+58,text.y, string.format(".0x%x", PlayerZ[Current_Player].Current_Pos_X_FloatingPoint))
+		--	VEL X
+			gui.text(text.x2+51,text.y, string.format("Vel X = 0x%x", PlayerZ[Current_Player].Current_X_Vel))
+		--	FloatingPointX
+--			gui.text(text.x2+109,text.y, string.format(".0x%x", PlayerZ[Current_Player].Current_X_Vel_FloatingPoint))
+		--	POS Y
+			gui.text(text.x,text.y*2, string.format("Pos Y = 0x%x", PlayerZ[Current_Player].Current_Y_Pos))
+		--	FloatingPointY
+--			gui.text(text.x+58,text.y*2, string.format(".0x%x", PlayerZ[Current_Player].Current_Pos_Y_FloatingPoint))
+		--	VEL Y
+			gui.text(text.x2+51,text.y*2, string.format("Vel Y = 0x%x", PlayerZ[Current_Player].Current_Y_Vel))
+		--	FloatingPointY
+--			gui.text(text.x2+109,text.y*2, string.format(".0x%x", PlayerZ[Current_Player].Current_Y_Vel_FloatingPoint))
+		--	ACCEL X
+		--	gui.text(text.x2+158+12,text.y,"Accel X =")
+		--	gui.text(text.x2+197+12,text.y, string.format("0x%x", PlayerZ[Current_Player].Current_Accel_X))
+		--	ACCEL X
+			gui.text(text.x2+142,text.y, string.format("XAccel = 0x%x", PlayerZ[Current_Player].Current_Accel_X))
+		--	ACCEL Y
+			gui.text(text.x2+142,text.y*2, string.format("YAccel = 0x%x", PlayerZ[Current_Player].Current_Accel_Y))
+		--	ANIMELEMTIME
+			gui.text(text.x+90,text.y*3, string.format("Animelemtime = 0x%x", PlayerZ[Current_Player].Current_Animelemtime))
+		--	Health
+--			gui.text(text.x,text.y*11, string.format("Health = 0x%x", PlayerZ[Current_Player].Current_Health))
+
+		end
+
+			--Toggle Animelem Endian
+	if keys.Z and pressing_Z == 0 then
+		pressing_Z = 1
+		if endian == 1 then
+			endian = 2
+		else
+			endian = 1
+	end
+end
+	
+	if pressing_Z == 1 and not keys.Z then
+			pressing_Z = 0
+	end	
+
+		if PlayerZ[Current_Player].Current_Animelem_Ptr and current_game[9] then
+			parseAnimElemdata(endian)
 		end
 		
 		if validplayer() == 2 then
@@ -336,6 +460,15 @@ gui.clearuncommitted()
 ----------------------------------------------------
 --DRAW THE TEXT TO THE SCREEN
 ----------------------------------------------------
+
+	if Current_Mode == 3 then
+		--	ANIM POINTER
+			gui.text(text.x,text.y*3, string.format("Anim Ptr  = 0x%x", PlayerZ[Current_Player].Current_Animelem_Ptr))
+		--	SPRITE POINTER
+				gui.text(text.x,text.y*5, string.format("Sprite Ptr  = 0x%x", PlayerZ[Current_Player].Current_Sprite_Pointer))
+			
+
+	else
 
 		--	ANIM POINTER
 			gui.text(text.x,text.y*3, string.format("Anim Ptr  = 0x%x", PlayerZ[Current_Player].Current_Animelem_Ptr))
@@ -369,20 +502,21 @@ gui.clearuncommitted()
 			gui.text(text.x,text.y*9, string.format("Tilemap Ptr = 0x%x", PlayerZ[Current_Player].Current_TileMap_Ptr))
 				if PlayerZ[Current_Player].Current_TileMap_Ptr > 0 then
 				--	TILEDEF FILE
-						gui.text(text.x,text.y*10, string.format("Tiledef file   = %d", PlayerZ[Current_Player].TileMap_File))
+						gui.text(text.x,text.y*10, string.format("Tilemap file   = %d", PlayerZ[Current_Player].TileMap_File))
 				--	TILEDEF OFFSET
 						gui.text(text.x+90,text.y*10, string.format("Offset = %x", PlayerZ[Current_Player].TileMap_Offset))	
-				end		
+					end		
 				end
 			end
-
+		end
 		--Freeze timer.cancel()
-	if infinite_time == 1 then
-		wb(timer_address, Max.timer)
-		wb(charselect_timer_address, Max.charselect_timer)
+	if TimerFreezeValid() == 1 then
+		if infinite_time == 1 then
+			wb(timer_address, Max.timer)
+			wb(charselect_timer_address, Max.charselect_timer)
 --		memory.writedword(P1_Characterselect_cursor_adr,0X0000170E)
+		end
 	end
-	
 			--Infinite Time Toggle
 	if keys.C and pressing_C == 0 then
 		if infinite_time == 1 then
@@ -401,8 +535,10 @@ end
 	--` TOGGLE MODE
 	if Current_Mode == 1 then
 	gui.text(text.x+140,text.y*19, "V - Data Mode - SOURCE")
-	else
+	elseif Current_Mode == 2 then
 	gui.text(text.x+140,text.y*19, "V - Data Mode - MUGEN")
+	else
+	gui.text(text.x+140,text.y*19, "V - Data Mode - ADDRESS")
 	end
 	--` INFINITE TIME
 	gui.text(text.x+140,text.y*20, "C - Infinite Time = ".. infinite_time)
@@ -416,17 +552,21 @@ end
 
 	--Toggle Data view
 	if pressing_V == 0 and keys.V then
-		if Current_Mode == 1 then
-			Current_Mode = 2
-			pressing_V = 1
+		pressing_V = 1
+		if Current_Mode + 1 > 3 then
+			Current_Mode = 1
 		else
-			Current_Mode = 1	
-			pressing_V = 1
+			Current_Mode = Current_Mode + 1	
 		end
 	end
 	
 	if pressing_V == 1 and not keys.V then
 			pressing_V = 0
+	end
+	
+	--TOGGLE PLAYERS: GAME SWITCH SAFETY
+	if Current_Player > Num_Players-1 then
+		Current_Player = Num_Players-1
 	end
 	
 	--Toggle Cuurent Player +1
